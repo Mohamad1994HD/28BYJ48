@@ -19,10 +19,6 @@ void BaseMotor::set_time_between_pulses(int t){
 }
 
 
-void BaseMotor::set_rotation_status(rotation_status st){
-    status = st;
-}
-
 void BaseMotor::out(int digit){
   digitalWrite(pin1, bitRead(lookup[digit], 0));
   digitalWrite(pin2, bitRead(lookup[digit], 1));
@@ -34,6 +30,23 @@ void BaseMotor::out(int digit){
 void BaseMotor::set_conversion_function(calc_function cf){
   conv_function = cf;
 }
+
+void BaseMotor::cw_step(){
+  for (int i=7; i>=0; i--){
+    out(i);
+    delayMicroseconds(time_between_pulses);
+  }
+}
+void BaseMotor::ccw_step(){
+  for (int i=0; i<8; i++){
+    out(i);
+    delayMicroseconds(time_between_pulses);
+    }
+}
+
+void BaseMotor::stop(){
+  status=STOP;
+}
 /////////////////////////////////////////////////
 // BLOCKING MOTOR MODE
 ////////////////////////////////////////////////
@@ -44,6 +57,10 @@ BlockingMotor::BlockingMotor(uint8_t p1, uint8_t p2,
 
 
 void BlockingMotor::rotate_by(long val){
+  if (status == STOP){
+    return;
+  }
+
   int steps;
   // if conversion functioin provieded convert accordingly
   // else just assign the number of steps
@@ -51,20 +68,14 @@ void BlockingMotor::rotate_by(long val){
   // rotate
   step(steps);
 }
+
 // //blocking
 void BlockingMotor::step(int num_of_steps){
   int steps = 0;
-
-  if (status == STOP){
-    return;
-  }
   // check provided direction
   if(status == CW){
     while(true){
-      for (int i=7; i>=0; i--){
-        out(i);
-        delayMicroseconds(time_between_pulses);
-      }
+      cw_step();
       steps++;
       if (steps >= num_of_steps){
         status = STOP;
@@ -73,10 +84,7 @@ void BlockingMotor::step(int num_of_steps){
     }
   }else{
     while(true){
-      for (int i=0; i<8; i++){
-        out(i);
-        delayMicroseconds(time_between_pulses);
-        }
+      ccw_step();
       steps++;
       if (steps >= num_of_steps){
         status = STOP;
@@ -85,84 +93,44 @@ void BlockingMotor::step(int num_of_steps){
     }
   }
 }
-//
-// void Motor::rotate(int degrees){
-//   if (status == STOP){
-//     return;
-//   }
-//   // convert degrees to steps
-//   int num_of_steps=map(degrees, 0, 360, 0, 512);
-//   // check provided direction
-//   if(status == CW){
-//     while(true){
-//       for (int i=7; i>=0; i--){
-//         out(i);
-//         delayMicroseconds(time_between_pulses);
-//       }
-//       steps++;
-//       if (steps >= num_of_steps){
-//         steps=0;
-//         status = STOP;
-//         break;
-//       }
-//     }
-//   }else{
-//     while(true){
-//     for (int i=0; i<8; i++){
-//       out(i);
-//       delayMicroseconds(time_between_pulses);
-//       }
-//     steps++;
-//     if (steps >= num_of_steps){
-//       steps=0;
-//       status = STOP;
-//       break;
-//       }
-//     }
-//   }
-// }
-//
-// //Non-blocking
-// void Motor::rotate_by(int degrees){
-//   if(!goal_set){
-//     goal_set = true;
-//     to_angle = degrees;
-//     to_steps = map(to_angle, 0, 360, 0, 512);
-//   }
-// }
-//
-// void Motor::rotate_by_steps(int steps){
-//     if(!goal_set){
-//       goal_set = true;
-//       to_steps = steps;
-//     }
-// }
-//
-// void Motor::commit(){
-//   if(!goal_set){
-//     return ;
-//   }
-//   if(status == STOP){
-//     return ;
-//   }
-//
-//   if (micros() - t >= time_between_pulses){
-//     if (status == CW){
-//       for(int i=7; i>=0; i--){
-//         out(i);
-//       }
-//     }else{
-//       for(int i=0; i<8; i++){
-//         out(i);
-//       }
-//     }
-//     steps++;
-//     if(steps == to_steps){
-//       status = STOP;
-//       steps = 0;
-//       return;
-//     }
-//   }
-// }
-//
-//
+
+
+//////////////////////////////////////////////
+// NON BLOCKING
+/////////////////////////////////////////////
+NonBlockingMotor::NonBlockingMotor(uint8_t p1, uint8_t p2,
+                             uint8_t p3, uint8_t p4):
+                             BaseMotor(p1,p2,p3,p4){}
+
+void NonBlockingMotor::init(){
+  BaseMotor::init();
+  dest_set = false;
+}
+
+void NonBlockingMotor::set_destination(long dest){
+  if (!dest_set){
+    conv_function != NULL ? steps=conv_function(dest):steps=dest;
+    dest_set = true;
+  }
+}
+
+void NonBlockingMotor::update(){
+  if (status==STOP){
+    return;
+  }
+
+  status == CW? cw_step():ccw_step();
+  steps--;
+  passed_steps++;
+
+  if(steps <= 0){
+    status=STOP;
+    dest_set = false;
+    on_dest_reached(passed_steps);
+  }
+
+}
+
+void NonBlockingMotor::set_on_destination_reached(on_reach_cback cb){
+  on_dest_reached = cb;
+}
